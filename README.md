@@ -322,43 +322,172 @@ def make_headers(for_browser=False):
             return h
         except Exception: pass
 
-    # 降级：固定请求头
+    # 增强反爬：扩展 User-Agent 池（覆盖多平台多版本）
     agents = [
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0.0 Safari/605.1.15",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15 Edge/17.4",
     ]
-    return {
-        "User-Agent": random.choice(agents),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
+    ua = random.choice(agents)
+    # 增强反爬：完善请求头，添加真实浏览器特征
+    headers = {
+        "User-Agent": ua,
+        "Accept-Language": random.choice(["en-US,en;q=0.9", "en-US,en;q=0.8", "en-GB,en;q=0.9"]),
+        "Accept": random.choice([
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "text/html,application/xhtml+xml,application/xml;q=0.8",
+        ]),
+        "Accept-Encoding": random.choice(["gzip, deflate, br", "gzip, deflate", "br;q=1.0, gzip;q=0.8"]),
+        "Cache-Control": random.choice(["no-cache", "max-age=0", "no-cache, no-store, must-revalidate"]),
     }
+    return headers
+
+# 增强反爬：构建增强请求头（添加 Referer, Origin, Sec-* 等）
+_COOKIE_JAR: dict[str, dict[str, str]] = {}
+
+def enhance_headers(base_headers: dict, url: str, referer: str = None) -> dict:
+    """增强请求头：添加反爬绕过所需的真实浏览器特征头"""
+    from urllib.parse import urlparse
+    h = dict(base_headers)
+    parsed = urlparse(url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+    # 随机添加 Referer（模拟从导航页进入）
+    if referer:
+        h["Referer"] = referer
+    elif random.random() > 0.3:
+        h["Referer"] = base_url + random.choice(["/", "/search", "/news", "/latest", "/home"])
+    # 随机添加 Origin
+    if random.random() > 0.5:
+        h["Origin"] = base_url
+    # 增强反爬：添加 Sec-Fetch 系列头（浏览器行为指纹）
+    h["Sec-Fetch-Dest"] = random.choice(["document", "empty", "frame", "iframe"])
+    h["Sec-Fetch-Mode"] = random.choice(["navigate", "cors", "no-cors"])
+    h["Sec-Fetch-Site"] = random.choice(["same-origin", "same-site", "cross-site", "none"])
+    h["Sec-Fetch-User"] = "?1" if random.random() > 0.7 else None
+    # 增强反爬：移除确定性的 Sec-Ch-Ua（可能导致指纹识别）
+    if random.random() > 0.6:
+        h["Sec-Ch-Ua"] = random.choice([
+            '"Not_A Brand";v="8", "Chromium";v="128", "Google Chrome";v="128"',
+            '"Not_A Brand";v="8", "Chromium";v="127", "Google Chrome";v="127"',
+            '"Not_A Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+        ])
+        h["Sec-Ch-Ua-Mobile"] = "?0"
+        h["Sec-Ch-Ua-Platform"] = random.choice(['"macOS"', '"Windows"', '"Linux"'])
+    # 随机添加 DNT
+    if random.random() > 0.5:
+        h["DNT"] = str(random.randint(1, 10) if random.random() > 0.3 else 1)
+    # 清理 None 值
+    return {k: v for k, v in h.items() if v is not None}
+
+# ════════════════════════════════════════════════════
+# Cookie 处理（增强反爬）
+# ════════════════════════════════════════════════════
+def get_cookies(netloc: str) -> dict:
+    """获取域名 Cookie"""
+    return _COOKIE_JAR.get(netloc, {})
+
+def set_cookies(netloc: str, cookies: dict) -> None:
+    """设置域名 Cookie"""
+    if netloc not in _COOKIE_JAR:
+        _COOKIE_JAR[netloc] = {}
+    _COOKIE_JAR[netloc].update(cookies)
+
+def parse_cookies_from_response(response) -> dict:
+    """从响应中提取并保存 Cookie"""
+    parsed = urlparse(response.url)
+    netloc = parsed.netloc
+    if "set-cookie" in response.headers:
+        cookie_str = response.headers.get("set-cookie", "")
+        cookies = {}
+        for part in cookie_str.split(","):
+            if "=" in part:
+                key, val = part.strip().split("=", 1)
+                key = key.strip()
+                if key and not key.startswith("_"):
+                    cookies[key] = val.split(";")[0].strip()
+        if cookies:
+            set_cookies(netloc, cookies)
+    return get_cookies(netloc)
+
+def build_cookie_header(netloc: str) -> str:
+    """构建 Cookie 请求头"""
+    cookies = get_cookies(netloc)
+    return "; ".join(f"{k}={v}" for k, v in cookies.items()) if cookies else ""
+
+# ════════════════════════════════════════════════════
+# 代理池支持（框架）
+# ════════════════════════════════════════════════════
+_PROXY_LIST: list = []
+_PROXY_INDEX: int = 0
+
+def load_proxies(proxy_file: str = None) -> None:
+    """加载代理列表（支持 HTTP/HTTPS/SOCKS5）"""
+    global _PROXY_LIST
+    _PROXY_LIST = [
+        "http://user:pass@proxy1.example.com:8080",
+        "http://user:pass@proxy2.example.com:8080",
+    ]
+    if proxy_file and os.path.exists(proxy_file):
+        with open(proxy_file) as f:
+            _PROXY_LIST = [line.strip() for line in f if line.strip()]
+    print(f"  ✓ Loaded {len(_PROXY_LIST)} proxies")
+
+def get_next_proxy() -> str:
+    """轮换获取代理"""
+    global _PROXY_INDEX
+    if not _PROXY_LIST:
+        return None
+    proxy = _PROXY_LIST[_PROXY_INDEX % len(_PROXY_LIST)]
+    _PROXY_INDEX += 1
+    return proxy
 
 # ════════════════════════════════════════════════════
 # HTTP 请求（curl_cffi 优先）
 # ════════════════════════════════════════════════════
-def http_get(url, headers=None, timeout=20, retries=None):
+def http_get(url, headers=None, timeout=20, retries=None, use_proxy: bool = False):
     """
     智能 HTTP GET：curl_cffi TLS 指纹伪装 > requests
     重试与限速策略对齐 Scrapy：RETRY_HTTP_CODES + 指数退避 + 按域名 DOWNLOAD_DELAY。
+    支持可选代理轮换。
     """
-    h = headers or make_headers()
+    h = enhance_headers(headers or make_headers(), url)
     if retries is None:
         retries = int(SCRAPE_CONFIG.get("RETRY_TIMES") or 3)
     retry_codes = SCRAPE_CONFIG.get("RETRY_HTTP_CODES") or frozenset()
-    # curl_cffi 可用时轮换多种浏览器指纹
-    impersonates = ["chrome124", "chrome120", "chrome110", "safari17_0", "edge122"]
+    # 增强反爬：扩展浏览器指纹池
+    impersonates = ["chrome128", "chrome127", "chrome126", "chrome124", "chrome120",
+                  "safari18_0", "safari17_0", "edge128", "edge127"]
+    proxy = get_next_proxy() if use_proxy and _PROXY_LIST else None
+    proxy_headers = {"http_proxy": proxy, "https_proxy": proxy} if proxy else {}
 
     for attempt in range(retries):
         _throttle_domain_for_url(url)
+        # 增强反爬：随机请求间隔抖动
+        if random.random() > 0.7:
+            time.sleep(random.uniform(0.05, 0.3))
         try:
             if CURL_AVAILABLE:
                 imp = impersonates[attempt % len(impersonates)]
                 sess = _get_curl_session(imp)
-                r = sess.get(url, headers=h, timeout=timeout, impersonate=imp)
+                r = sess.get(url, headers=h, timeout=timeout, impersonate=imp, **proxy_headers)
             else:
-                r = _get_requests_session().get(url, headers=h, timeout=timeout)
+                r = _get_requests_session().get(url, headers=h, timeout=timeout, proxies=proxy_headers)
+
+            # 增强反爬：处理响应中的 Cookie
+            parse_cookies_from_response(r)
 
             if r.status_code == 200:
                 return r
